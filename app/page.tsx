@@ -13,7 +13,7 @@ type Visitor = "rocket" | "alien";
 type SolarPhase = "idle" | "incoming" | "detonation" | "aftermath" | "rebirth";
 type FieldFeature = "craft" | "meteors" | "eclipse";
 type FocusDuration = 20 | 60;
-type FlightPhase = "hyperspace" | "cruise";
+type FlightPhase = "hyperspace" | "cruise" | "arrival";
 
 type Signal = {
   id: number;
@@ -29,6 +29,16 @@ type AmbientVoice = {
 type AudioBus = {
   input: DynamicsCompressorNode;
   volume: GainNode;
+};
+
+type DashboardTelemetry = {
+  scanId: number;
+  sector: string;
+  readings: [string, string, string];
+  blips: { x: number; y: number; delay: number; size: number }[];
+  spectrum: { height: number; duration: number; delay: number }[];
+  centerReadings: [string, string, string];
+  matrixDelays: number[];
 };
 
 const modes: { id: Mode; label: string; note: string; detail: string }[] = [
@@ -70,6 +80,57 @@ const cruiseStars = [
   [-33, 20, 4.6, -2.1], [-35, -14, 5.2, -4.3], [-7, -18, 3.6, -1],
   [11, -13, 4.9, -3], [20, 8, 5.4, -0.1], [-18, 10, 4.3, -2.4],
 ] as const;
+
+const initialDashboardTelemetry: DashboardTelemetry = {
+  scanId: 0,
+  sector: "ᖶᖇ-07",
+  readings: ["Θ 7.884", "Δ 03.11", "Ψ LOCK"],
+  blips: [
+    { x: 27, y: 61, delay: -0.2, size: 3 },
+    { x: 74, y: 29, delay: -0.9, size: 3 },
+    { x: 63, y: 78, delay: -1.5, size: 2 },
+  ],
+  spectrum: Array.from({ length: 8 }, (_, index) => ({
+    height: 28 + ((index * 17) % 60),
+    duration: 1.8 + (index % 4) * 0.3,
+    delay: -(index * 0.31),
+  })),
+  centerReadings: ["42.7", "08.3", "SYNC"],
+  matrixDelays: Array.from({ length: 12 }, (_, index) => -(index * 0.19)),
+};
+
+function createDashboardTelemetry(): DashboardTelemetry {
+  const contactCount = 3 + Math.floor(Math.random() * 3);
+  const spectrumCount = 8 + Math.floor(Math.random() * 4);
+  const glyphs = ["ᖶᖇ", "⌬ᚫ", "ᒥᗝ", "ϟ⌁", "⟟ᖵ"];
+
+  return {
+    scanId: Math.floor(Math.random() * 1_000_000),
+    sector: `${glyphs[Math.floor(Math.random() * glyphs.length)]}-${String(Math.floor(Math.random() * 99)).padStart(2, "0")}`,
+    readings: [
+      `Θ ${(Math.random() * 9 + 1).toFixed(3)}`,
+      `Δ ${(Math.random() * 7).toFixed(2)}`,
+      Math.random() > 0.28 ? "Ψ LOCK" : "Ψ SEEK",
+    ],
+    blips: Array.from({ length: contactCount }, () => ({
+      x: 14 + Math.random() * 72,
+      y: 14 + Math.random() * 72,
+      delay: -(Math.random() * 2.4),
+      size: 2 + Math.floor(Math.random() * 3),
+    })),
+    spectrum: Array.from({ length: spectrumCount }, () => ({
+      height: 18 + Math.random() * 76,
+      duration: 1.3 + Math.random() * 2.1,
+      delay: -(Math.random() * 2.8),
+    })),
+    centerReadings: [
+      (18 + Math.random() * 74).toFixed(1),
+      (Math.random() * 18).toFixed(1).padStart(4, "0"),
+      Math.random() > 0.22 ? "SYNC" : "CAL",
+    ],
+    matrixDelays: Array.from({ length: 12 }, () => -(Math.random() * 2.8)),
+  };
+}
 
 function createRandomConstellation(count: number) {
   const points: [number, number][] = [];
@@ -454,6 +515,14 @@ export default function Home() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [sessionPaused, setSessionPaused] = useState(false);
   const [flightPhase, setFlightPhase] = useState<FlightPhase>("cruise");
+  const [dashboardTelemetry, setDashboardTelemetry] = useState<DashboardTelemetry>(
+    initialDashboardTelemetry,
+  );
+  const [fieldReadings, setFieldReadings] = useState({
+    orbit: "18.2",
+    relay: 4,
+    signal: "CALM",
+  });
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
@@ -496,7 +565,7 @@ export default function Home() {
       setRemainingSeconds(nextRemaining);
       if (nextRemaining === 0) {
         window.clearInterval(interval);
-        setSessionPaused(true);
+        setFlightPhase("arrival");
         const context = audioContext.current;
         if (context?.state === "running" && audioBus.current) {
           playFocusBell(context, audioBus.current.input);
@@ -506,6 +575,30 @@ export default function Home() {
 
     return () => window.clearInterval(interval);
   }, [focusDuration, sessionPaused]);
+
+  useEffect(() => {
+    if (!focusDuration || sessionPaused) return;
+
+    const telemetryInterval = window.setInterval(() => {
+      if (remainingSecondsRef.current === 0) return;
+      setDashboardTelemetry(createDashboardTelemetry());
+    }, 4200);
+
+    return () => window.clearInterval(telemetryInterval);
+  }, [focusDuration, sessionPaused]);
+
+  useEffect(() => {
+    const fieldTelemetryInterval = window.setInterval(() => {
+      const signalStates = ["CALM", "CLEAR", "SOFT", "OPEN"];
+      setFieldReadings({
+        orbit: (12 + Math.random() * 18).toFixed(1),
+        relay: 1 + Math.floor(Math.random() * 8),
+        signal: signalStates[Math.floor(Math.random() * signalStates.length)],
+      });
+    }, 5400);
+
+    return () => window.clearInterval(fieldTelemetryInterval);
+  }, []);
 
   useEffect(() => {
     let arrivalTimer = 0;
@@ -647,6 +740,24 @@ export default function Home() {
     );
   }
 
+  function handleFieldPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (focusDuration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const lookX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
+    const lookY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
+    event.currentTarget.style.setProperty("--look-x", `${(lookX * 13).toFixed(2)}px`);
+    event.currentTarget.style.setProperty("--look-y", `${(lookY * 10).toFixed(2)}px`);
+    event.currentTarget.style.setProperty("--look-far-x", `${(lookX * -5).toFixed(2)}px`);
+    event.currentTarget.style.setProperty("--look-far-y", `${(lookY * -4).toFixed(2)}px`);
+  }
+
+  function resetFieldParallax(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.style.setProperty("--look-x", "0");
+    event.currentTarget.style.setProperty("--look-y", "0");
+    event.currentTarget.style.setProperty("--look-far-x", "0");
+    event.currentTarget.style.setProperty("--look-far-y", "0");
+  }
+
   async function handleSoundToggle() {
     if (soundOn) {
       setSoundOn(false);
@@ -745,6 +856,7 @@ export default function Home() {
       playHyperspaceSound(context, audioBus.current.input);
     }
     setFlightPhase("hyperspace");
+    setDashboardTelemetry(createDashboardTelemetry());
     setFocusDuration(duration);
     setRemainingSeconds(duration * 60);
     remainingSecondsRef.current = duration * 60;
@@ -884,6 +996,8 @@ export default function Home() {
         <div
           className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase} feature-${activeFeature ?? "idle"}`}
           onPointerDown={(event) => void handleFieldPointer(event)}
+          onPointerMove={handleFieldPointerMove}
+          onPointerLeave={resetFieldParallax}
           onKeyDown={(event) => {
             if ((event.target as HTMLElement).closest("button, input")) return;
             if (event.key === "Enter" || event.key === " ") {
@@ -898,6 +1012,18 @@ export default function Home() {
           aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal."
         >
           <div className="field-grid" aria-hidden="true" />
+          <div className="observatory-frame" aria-hidden="true">
+            <span className="station-corner station-corner-one" />
+            <span className="station-corner station-corner-two" />
+            <span className="station-corner station-corner-three" />
+            <span className="station-corner station-corner-four" />
+            <span className="station-ticks station-ticks-top" />
+            <span className="station-ticks station-ticks-side" />
+            <small>OBSERVATION DECK // DRIFT-01</small>
+          </div>
+          <div className="mode-space-weather" aria-hidden="true">
+            <span /><span /><span />
+          </div>
           <div className="ambient ambient-one" aria-hidden="true" />
           <div className="ambient ambient-two" aria-hidden="true" />
           {focusDuration && (
@@ -927,6 +1053,12 @@ export default function Home() {
               <span className="flight-nebula" />
               <span className="flight-planet"><i /></span>
               <span className="flight-comet" />
+              <div className="arrival-event">
+                <span className="arrival-horizon" />
+                <span className="arrival-ring arrival-ring-one" />
+                <span className="arrival-ring arrival-ring-two" />
+                <span className="arrival-stars"><i /><i /><i /><i /><i /></span>
+              </div>
             </div>
           )}
           <div className="star-glints" aria-hidden="true">
@@ -937,6 +1069,9 @@ export default function Home() {
             <span className="drifter crescent-world" />
             <span className="drifter far-satellite"><i /><i /></span>
             <span className="drifter dust-cloud" />
+            <span className="drifter relay-satellite"><i /><i /><i /></span>
+            <span className="drifter deep-comet" />
+            <span className="drifter moon-pair"><i /></span>
           </div>
 
           {visitor === "rocket" && (
@@ -1001,25 +1136,50 @@ export default function Home() {
 
           <div className="core" aria-hidden="true">
             <span className="core-dot" />
-            <span className="orbit orbit-one"><i /></span>
-            <span className="orbit orbit-two"><i /></span>
-            <span className="orbit orbit-three"><i /></span>
+            <span className="orbit orbit-one"><i /><i /></span>
+            <span className="orbit orbit-two"><i /><i /><i /></span>
+            <span className="orbit orbit-three"><i /><i /></span>
+            <span className="orbit-label orbit-label-one">ORBIT A · {fieldReadings.orbit} AU</span>
+            <span className="orbit-label orbit-label-two">MOON RELAY · {String(fieldReadings.relay).padStart(2, "0")}</span>
+            <span className="orbit-label orbit-label-three">SIGNAL {fieldReadings.signal}</span>
             <span className="axis axis-x" />
             <span className="axis axis-y" />
           </div>
 
           {focusDuration && (
             <div className="cockpit-shell" aria-hidden="true">
+              <div className="windshield-rim rim-left" />
+              <div className="windshield-rim rim-right" />
+              <div className="windshield-rim rim-bottom" />
               <div className="canopy-frame canopy-top">
                 <span /><span /><span />
               </div>
               <div className="canopy-strut strut-left"><i /></div>
               <div className="canopy-strut strut-right"><i /></div>
+              <div className="cross-brace cross-brace-left" />
+              <div className="cross-brace cross-brace-right" />
+              <div className="side-window side-window-left">
+                <i /><i /><i /><i /><i />
+              </div>
+              <div className="side-window side-window-right">
+                <i /><i /><i /><i /><i />
+              </div>
               <div className="canopy-glass">
                 <span className="glass-reflection reflection-one" />
                 <span className="glass-reflection reflection-two" />
+                <span className="glass-scratches"><i /><i /><i /><i /></span>
+                <span className="glass-condensation condensation-left" />
+                <span className="glass-condensation condensation-right" />
+                <span className="dashboard-reflection" />
                 <span className="target-reticle"><i /><i /><i /></span>
                 <span className="flight-vector">VECTOR // 7.42</span>
+                {remainingSeconds === 0 && (
+                  <div className="arrival-message">
+                    <span>Voyage complete</span>
+                    <strong>You made some space.</strong>
+                    <small>Take one slow breath before returning.</small>
+                  </div>
+                )}
               </div>
               <div className="alien-dashboard">
                 <div className="dashboard-ridge">
@@ -1036,22 +1196,56 @@ export default function Home() {
                   <span className="mini-slider"><i /></span>
                 </div>
                 <section className="alien-console console-left">
-                  <div className="console-label">ᖶᖇ // SCAN ARRAY</div>
+                  <div className="console-label">
+                    {flightPhase === "arrival"
+                      ? "DESTINATION · FOUND"
+                      : `${dashboardTelemetry.sector} · SCAN ARRAY`}
+                  </div>
                   <div className="alien-radar">
                     <span className="radar-sweep" />
-                    <i /><i /><i />
+                    {dashboardTelemetry.blips.map((blip, index) => (
+                      <i
+                        key={`${dashboardTelemetry.scanId}-blip-${index}`}
+                        style={
+                          {
+                            left: `${blip.x}%`,
+                            top: `${blip.y}%`,
+                            width: `${blip.size}px`,
+                            height: `${blip.size}px`,
+                            animationDelay: `${blip.delay}s`,
+                          } as CSSProperties
+                        }
+                      />
+                    ))}
                   </div>
                   <div className="glyph-strip">⌁ ⟟ ⊹ ᚫ ⌬ ᖶ ⧖</div>
                   <div className="micro-readouts">
-                    <span>Θ 7.884</span><span>Δ 03.11</span><span>Ψ LOCK</span>
+                    {dashboardTelemetry.readings.map((reading) => (
+                      <span key={reading}>{reading}</span>
+                    ))}
                   </div>
                   <div className="spectral-bars">
-                    <i /><i /><i /><i /><i /><i /><i /><i />
+                    {dashboardTelemetry.spectrum.map((bar, index) => (
+                      <i
+                        key={`${dashboardTelemetry.scanId}-spectrum-${index}`}
+                        style={
+                          {
+                            "--spectrum-height": `${bar.height}%`,
+                            animationDuration: `${bar.duration}s`,
+                            animationDelay: `${bar.delay}s`,
+                          } as CSSProperties
+                        }
+                      />
+                    ))}
                   </div>
                 </section>
                 <section className="alien-console console-center">
                   <div className="console-label">
-                    {flightPhase === "hyperspace" ? "VOID DRIVE // ENGAGED" : "NAV CORE // NOMINAL"}
+                    {flightPhase === "hyperspace"
+                      ? "VOID DRIVE // ENGAGED"
+                      : flightPhase === "arrival"
+                        ? "FOCUS VOYAGE // COMPLETE"
+                        : "NAV CORE // NOMINAL"}
                   </div>
                   <div className="nav-sphere">
                     <span className="nav-orbit nav-orbit-one"><i /></span>
@@ -1063,13 +1257,15 @@ export default function Home() {
                     <i /><i /><i /><i /><i /><i /><i /><i />
                   </div>
                   <div className="telemetry-stack">
-                    <span><b>ᚫ</b> 42.7</span>
-                    <span><b>ϟ</b> 08.3</span>
-                    <span><b>⌁</b> SYNC</span>
+                    <span><b>ᚫ</b> {dashboardTelemetry.centerReadings[0]}</span>
+                    <span><b>ϟ</b> {dashboardTelemetry.centerReadings[1]}</span>
+                    <span><b>⌁</b> {dashboardTelemetry.centerReadings[2]}</span>
                   </div>
                 </section>
                 <section className="alien-console console-right">
-                  <div className="console-label">BIO-LINK // STABLE</div>
+                  <div className="console-label">
+                    {flightPhase === "arrival" ? "BIO-LINK // RESTING" : "BIO-LINK // STABLE"}
+                  </div>
                   <div className="signal-wave">
                     <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
                   </div>
@@ -1079,7 +1275,12 @@ export default function Home() {
                     <span style={{ "--gauge": "173deg" } as CSSProperties}><i />64</span>
                   </div>
                   <div className="power-matrix">
-                    <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
+                    {dashboardTelemetry.matrixDelays.map((delay, index) => (
+                      <i
+                        key={`${dashboardTelemetry.scanId}-matrix-${index}`}
+                        style={{ animationDelay: `${delay}s` }}
+                      />
+                    ))}
                   </div>
                   <div className="glyph-strip">ᒪ ∷ ⧫ ⌇ ᖵ ◌ ⊢</div>
                 </section>
@@ -1091,6 +1292,10 @@ export default function Home() {
                   <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
                 </div>
               </div>
+              <div className="pilot-seat pilot-seat-left" />
+              <div className="pilot-seat pilot-seat-right" />
+              <div className="control-yoke control-yoke-left"><i /></div>
+              <div className="control-yoke control-yoke-right"><i /></div>
             </div>
           )}
 
