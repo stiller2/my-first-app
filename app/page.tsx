@@ -13,6 +13,7 @@ type Visitor = "rocket" | "alien";
 type SolarPhase = "idle" | "incoming" | "detonation" | "aftermath" | "rebirth";
 type FieldFeature = "craft" | "meteors" | "eclipse";
 type FocusDuration = 20 | 60;
+type FlightPhase = "hyperspace" | "cruise";
 
 type Signal = {
   id: number;
@@ -56,6 +57,42 @@ const modeFrequency: Record<Mode, number> = {
   bloom: 261.6,
   echo: 329.6,
 };
+
+const cruiseStars = [
+  [-46, -38, 3.8, -0.2], [-34, -44, 4.6, -2.8], [-19, -41, 5.2, -1.1],
+  [3, -46, 4.1, -3.6], [21, -42, 5.8, -0.9], [39, -36, 4.9, -4.2],
+  [47, -19, 3.7, -1.9], [43, 2, 5.4, -3.1], [48, 24, 4.3, -0.6],
+  [36, 39, 5.9, -2.2], [19, 44, 4.7, -4.7], [-2, 47, 5.1, -1.5],
+  [-23, 42, 3.9, -3.9], [-41, 35, 5.6, -0.4], [-47, 16, 4.5, -2.5],
+  [-43, -4, 5.3, -4.5], [-29, -27, 4.2, -1.3], [-12, -31, 6.1, -3.3],
+  [14, -28, 4.8, -0.8], [31, -22, 5.7, -2.7], [34, 13, 4.4, -4.1],
+  [24, 29, 5.5, -1.7], [4, 33, 4, -3.5], [-16, 29, 6, -0.3],
+  [-33, 20, 4.6, -2.1], [-35, -14, 5.2, -4.3], [-7, -18, 3.6, -1],
+  [11, -13, 4.9, -3], [20, 8, 5.4, -0.1], [-18, 10, 4.3, -2.4],
+] as const;
+
+function createRandomConstellation(count: number) {
+  const points: [number, number][] = [];
+  let attempts = 0;
+
+  while (points.length < count && attempts < 120) {
+    const candidate: [number, number] = [
+      7 + Math.random() * 86,
+      9 + Math.random() * 80,
+    ];
+    const hasRoom = points.every(([x, y]) =>
+      Math.hypot(candidate[0] - x, candidate[1] - y) > 9,
+    );
+    if (hasRoom) points.push(candidate);
+    attempts += 1;
+  }
+
+  while (points.length < count) {
+    points.push([7 + Math.random() * 86, 9 + Math.random() * 80]);
+  }
+
+  return points;
+}
 
 function createNoiseBuffer(context: AudioContext, mode: Mode, duration = 4) {
   const buffer = context.createBuffer(
@@ -364,6 +401,43 @@ function playFocusBell(context: AudioContext, output: AudioNode) {
   });
 }
 
+function playHyperspaceSound(context: AudioContext, output: AudioNode) {
+  const now = context.currentTime;
+  const rush = context.createBufferSource();
+  const rushFilter = context.createBiquadFilter();
+  const rushGain = context.createGain();
+  const engine = context.createOscillator();
+  const engineGain = context.createGain();
+
+  rush.buffer = createNoiseBuffer(context, "echo", 4.5);
+  rushFilter.type = "bandpass";
+  rushFilter.Q.value = 0.7;
+  rushFilter.frequency.setValueAtTime(240, now);
+  rushFilter.frequency.exponentialRampToValueAtTime(2400, now + 3.2);
+  rushFilter.frequency.exponentialRampToValueAtTime(520, now + 4.45);
+  rushGain.gain.setValueAtTime(0.0001, now);
+  rushGain.gain.exponentialRampToValueAtTime(0.058, now + 1.1);
+  rushGain.gain.setValueAtTime(0.058, now + 3.1);
+  rushGain.gain.exponentialRampToValueAtTime(0.0001, now + 4.45);
+  rush.connect(rushFilter);
+  rushFilter.connect(rushGain);
+  rushGain.connect(output);
+
+  engine.type = "sine";
+  engine.frequency.setValueAtTime(42, now);
+  engine.frequency.exponentialRampToValueAtTime(86, now + 3.4);
+  engineGain.gain.setValueAtTime(0.0001, now);
+  engineGain.gain.exponentialRampToValueAtTime(0.045, now + 0.65);
+  engineGain.gain.exponentialRampToValueAtTime(0.0001, now + 4.4);
+  engine.connect(engineGain);
+  engineGain.connect(output);
+
+  rush.start(now);
+  rush.stop(now + 4.5);
+  engine.start(now);
+  engine.stop(now + 4.45);
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("drift");
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -379,6 +453,7 @@ export default function Home() {
   const [focusDuration, setFocusDuration] = useState<FocusDuration | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [sessionPaused, setSessionPaused] = useState(false);
+  const [flightPhase, setFlightPhase] = useState<FlightPhase>("cruise");
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
@@ -386,11 +461,13 @@ export default function Home() {
   const timers = useRef<number[]>([]);
   const focusDeadline = useRef<number | null>(null);
   const remainingSecondsRef = useRef(0);
+  const flightTimer = useRef<number | null>(null);
 
   useEffect(() => {
     const activeTimers = timers.current;
     return () => {
       activeTimers.forEach(window.clearTimeout);
+      if (flightTimer.current) window.clearTimeout(flightTimer.current);
       ambientVoice.current?.stop();
       void audioContext.current?.close();
     };
@@ -591,24 +668,20 @@ export default function Home() {
     if (isConstellating) return;
     const activeMode = mode;
     const context = await ensureAudio();
-    const patterns: Record<Mode, [number, number][]> = {
-      drift: [[18, 66], [28, 57], [39, 49], [51, 43], [63, 39], [74, 42], [82, 51]],
-      bloom: [[50, 49], [50, 29], [69, 39], [71, 62], [50, 72], [29, 62], [31, 39], [50, 49]],
-      echo: [[21, 31], [34, 40], [48, 49], [62, 58], [76, 67], [62, 40], [48, 31], [34, 58], [21, 67]],
-    };
+    const constellation = createRandomConstellation(8 + Math.floor(Math.random() * 5));
 
     setIsConstellating(true);
-    patterns[activeMode].forEach(([x, y], index) => {
+    constellation.forEach(([x, y], index) => {
       const timer = window.setTimeout(
         () => emitSignal(x, y, activeMode, index, context ?? undefined),
-        index * 135,
+        index * (90 + Math.random() * 95),
       );
       timers.current.push(timer);
     });
 
     const finishTimer = window.setTimeout(
       () => setIsConstellating(false),
-      patterns[activeMode].length * 135 + 900,
+      constellation.length * 185 + 700,
     );
     timers.current.push(finishTimer);
   }
@@ -667,13 +740,23 @@ export default function Home() {
   }
 
   async function startFocusSession(duration: FocusDuration) {
-    await ensureAudio();
+    const context = await ensureAudio();
+    if (context && audioBus.current) {
+      playHyperspaceSound(context, audioBus.current.input);
+    }
+    setFlightPhase("hyperspace");
     setFocusDuration(duration);
     setRemainingSeconds(duration * 60);
     remainingSecondsRef.current = duration * 60;
     setSessionPaused(false);
     setActiveFeature(null);
     setSolarPhase("idle");
+
+    if (flightTimer.current) window.clearTimeout(flightTimer.current);
+    flightTimer.current = window.setTimeout(() => {
+      setFlightPhase("cruise");
+      flightTimer.current = null;
+    }, 4600);
   }
 
   function endFocusSession() {
@@ -681,6 +764,9 @@ export default function Home() {
     setRemainingSeconds(0);
     remainingSecondsRef.current = 0;
     setSessionPaused(false);
+    setFlightPhase("cruise");
+    if (flightTimer.current) window.clearTimeout(flightTimer.current);
+    flightTimer.current = null;
     focusDeadline.current = null;
   }
 
@@ -700,7 +786,9 @@ export default function Home() {
   const focusTime = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
   return (
-    <main className={`shell theme-${mode} ${focusDuration ? "is-focus-session" : ""}`}>
+    <main
+      className={`shell theme-${mode} ${focusDuration ? `is-focus-session flight-${flightPhase} ${sessionPaused ? "session-paused" : ""}` : ""}`}
+    >
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Drift, back to top">
           <span className="brand-mark" aria-hidden="true" />
@@ -785,6 +873,7 @@ export default function Home() {
           className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase} feature-${activeFeature ?? "idle"}`}
           onPointerDown={(event) => void handleFieldPointer(event)}
           onKeyDown={(event) => {
+            if ((event.target as HTMLElement).closest("button, input")) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               void ensureAudio().then((context) =>
@@ -799,6 +888,35 @@ export default function Home() {
           <div className="field-grid" aria-hidden="true" />
           <div className="ambient ambient-one" aria-hidden="true" />
           <div className="ambient ambient-two" aria-hidden="true" />
+          {focusDuration && (
+            <div className="space-flight" aria-hidden="true">
+              <div className="hyperspace-tunnel">
+                <i /><i /><i /><i /><i /><i /><i /><i />
+                <i /><i /><i /><i /><i /><i /><i /><i />
+                <i /><i /><i /><i /><i /><i /><i /><i />
+                <i /><i /><i /><i /><i /><i /><i /><i />
+              </div>
+              <div className="cruise-starfield">
+                {cruiseStars.map(([x, y, duration, delay], index) => (
+                  <i
+                    key={`${x}-${y}`}
+                    style={
+                      {
+                        "--flight-x": `${x}vw`,
+                        "--flight-y": `${y}vh`,
+                        "--flight-duration": `${duration}s`,
+                        "--flight-delay": `${delay}s`,
+                        "--flight-size": `${1 + (index % 3) * 0.65}px`,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </div>
+              <span className="flight-nebula" />
+              <span className="flight-planet"><i /></span>
+              <span className="flight-comet" />
+            </div>
+          )}
           <div className="star-glints" aria-hidden="true">
             <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
           </div>
@@ -879,6 +997,71 @@ export default function Home() {
           </div>
 
           {focusDuration && (
+            <div className="cockpit-shell" aria-hidden="true">
+              <div className="canopy-frame canopy-top">
+                <span /><span /><span />
+              </div>
+              <div className="canopy-strut strut-left"><i /></div>
+              <div className="canopy-strut strut-right"><i /></div>
+              <div className="canopy-glass">
+                <span className="glass-reflection reflection-one" />
+                <span className="glass-reflection reflection-two" />
+                <span className="target-reticle"><i /><i /><i /></span>
+                <span className="flight-vector">VECTOR // 7.42</span>
+              </div>
+              <div className="alien-dashboard">
+                <div className="dashboard-ridge">
+                  <span /><span /><span /><span /><span /><span /><span />
+                </div>
+                <section className="alien-console console-left">
+                  <div className="console-label">ᖶᖇ // SCAN ARRAY</div>
+                  <div className="alien-radar">
+                    <span className="radar-sweep" />
+                    <i /><i /><i />
+                  </div>
+                  <div className="glyph-strip">⌁ ⟟ ⊹ ᚫ ⌬ ᖶ ⧖</div>
+                  <div className="micro-readouts">
+                    <span>Θ 7.884</span><span>Δ 03.11</span><span>Ψ LOCK</span>
+                  </div>
+                </section>
+                <section className="alien-console console-center">
+                  <div className="console-label">
+                    {flightPhase === "hyperspace" ? "VOID DRIVE // ENGAGED" : "NAV CORE // NOMINAL"}
+                  </div>
+                  <div className="nav-sphere">
+                    <span className="nav-orbit nav-orbit-one"><i /></span>
+                    <span className="nav-orbit nav-orbit-two"><i /></span>
+                    <strong>⟡</strong>
+                  </div>
+                  <div className="alien-command-line">ᖵᖇᗩ · ⌁⌁ · ϟ7 · ᒥᗝᒪ</div>
+                  <div className="touch-keys">
+                    <i /><i /><i /><i /><i /><i /><i /><i />
+                  </div>
+                </section>
+                <section className="alien-console console-right">
+                  <div className="console-label">BIO-LINK // STABLE</div>
+                  <div className="signal-wave">
+                    <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
+                  </div>
+                  <div className="engine-gauges">
+                    <span style={{ "--gauge": "194deg" } as CSSProperties}><i />72</span>
+                    <span style={{ "--gauge": "238deg" } as CSSProperties}><i />88</span>
+                    <span style={{ "--gauge": "173deg" } as CSSProperties}><i />64</span>
+                  </div>
+                  <div className="glyph-strip">ᒪ ∷ ⧫ ⌇ ᖵ ◌ ⊢</div>
+                </section>
+                <div className="throttle-cluster">
+                  <span className="throttle throttle-one"><i /></span>
+                  <span className="throttle throttle-two"><i /></span>
+                </div>
+                <div className="system-lights">
+                  <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {focusDuration && (
             <div
               className="focus-hud"
               onPointerDown={(event) => event.stopPropagation()}
@@ -894,7 +1077,9 @@ export default function Home() {
                     ? "Session complete"
                     : sessionPaused
                       ? "Holding orbit"
-                      : "Gentle focus"}
+                      : flightPhase === "hyperspace"
+                        ? "Hyperspace insertion"
+                        : "Deep-space cruise"}
                 </span>
                 <strong>{focusTime}</strong>
                 <i aria-hidden="true" />
