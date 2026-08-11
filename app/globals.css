@@ -558,6 +558,33 @@ button {
   animation-delay: -1.2s;
 }
 
+.warp-streaks {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.warp-streaks i {
+  position: absolute;
+  left: 52%;
+  top: 45%;
+  width: 18vw;
+  height: 1px;
+  opacity: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(var(--signal-rgb), 0.72), transparent);
+  animation: warp-streak 850ms ease-out infinite;
+}
+
+.warp-streaks i:nth-child(1) { transform: rotate(8deg); }
+.warp-streaks i:nth-child(2) { transform: rotate(61deg); animation-delay: -180ms; }
+.warp-streaks i:nth-child(3) { transform: rotate(126deg); animation-delay: -360ms; }
+.warp-streaks i:nth-child(4) { transform: rotate(184deg); animation-delay: -540ms; }
+.warp-streaks i:nth-child(5) { transform: rotate(238deg); animation-delay: -720ms; }
+.warp-streaks i:nth-child(6) { transform: rotate(309deg); animation-delay: -90ms; }
+
 .space-visitor {
   position: absolute;
   z-index: 8;
@@ -744,6 +771,156 @@ button {
   clip-path: polygon(32% 0, 68% 0, 100% 100%, 0 100%);
   animation: alien-beam 10.4s ease-in-out forwards;
 }
+
+.signal-field:not(.solar-idle) .space-visitor {
+  opacity: 0 !important;
+  transition: opacity 250ms ease;
+}
+
+.sun-missile {
+  position: absolute;
+  z-index: 18;
+  left: 52%;
+  top: -72px;
+  width: 28px;
+  height: 62px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 9px rgba(240, 90, 71, 0.3));
+  animation: missile-drop 1.55s cubic-bezier(0.68, 0.04, 0.9, 0.5) forwards;
+}
+
+.missile-body {
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  top: 12px;
+  width: 12px;
+  height: 38px;
+  border: 1px solid rgba(233, 226, 214, 0.74);
+  border-radius: 7px 7px 3px 3px;
+  background: #25221f;
+}
+
+.missile-body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -8px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid var(--paper);
+}
+
+.missile-body i {
+  position: absolute;
+  left: 3px;
+  top: 8px;
+  width: 4px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--signal);
+  opacity: 0.7;
+}
+
+.missile-fins {
+  position: absolute;
+  z-index: 1;
+  left: 2px;
+  top: 17px;
+  width: 24px;
+  height: 14px;
+  border-left: 6px solid var(--signal);
+  border-right: 6px solid var(--signal);
+  border-top: 7px solid transparent;
+  opacity: 0.72;
+}
+
+.missile-flame {
+  position: absolute;
+  left: 10px;
+  top: 0;
+  width: 8px;
+  height: 17px;
+  border-radius: 50% 50% 20% 20%;
+  background: var(--signal);
+  box-shadow: 0 0 13px rgba(var(--signal-rgb), 0.82);
+  animation: missile-flame 130ms ease-in-out infinite alternate;
+}
+
+.solar-explosion {
+  position: absolute;
+  z-index: 20;
+  left: 52%;
+  top: 45%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.explosion-flash,
+.shockwave,
+.solar-debris {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.explosion-flash {
+  width: 110px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fff8e9;
+  box-shadow:
+    0 0 45px 25px rgba(255, 242, 209, 0.7),
+    0 0 110px 62px rgba(var(--signal-rgb), 0.42),
+    0 0 240px 120px rgba(var(--signal-rgb), 0.16);
+  animation: solar-flash 2.15s cubic-bezier(0.12, 0.68, 0.28, 1) forwards;
+}
+
+.shockwave {
+  width: 90px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 246, 226, 0.82);
+  border-radius: 50%;
+  animation: solar-shockwave 2.1s cubic-bezier(0.12, 0.55, 0.2, 1) forwards;
+}
+
+.shockwave-two {
+  border-color: rgba(var(--signal-rgb), 0.75);
+  animation-delay: 0.24s;
+}
+
+.solar-debris {
+  width: 20px;
+  height: 20px;
+}
+
+.solar-debris i {
+  --debris-x: 0px;
+  --debris-y: 0px;
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 8px rgba(var(--signal-rgb), 0.7);
+  animation: solar-debris 1.9s ease-out forwards;
+}
+
+.solar-debris i:nth-child(1) { --debris-x: 150px; --debris-y: -65px; }
+.solar-debris i:nth-child(2) { --debris-x: 95px; --debris-y: 122px; }
+.solar-debris i:nth-child(3) { --debris-x: -128px; --debris-y: 88px; }
+.solar-debris i:nth-child(4) { --debris-x: -148px; --debris-y: -54px; }
+.solar-debris i:nth-child(5) { --debris-x: 34px; --debris-y: -158px; }
+.solar-debris i:nth-child(6) { --debris-x: 168px; --debris-y: 39px; }
+.solar-debris i:nth-child(7) { --debris-x: -42px; --debris-y: 161px; }
+.solar-debris i:nth-child(8) { --debris-x: -80px; --debris-y: -128px; }
 
 .has-visitor .core {
   filter: drop-shadow(0 0 22px rgba(var(--signal-rgb), 0.15));
@@ -980,6 +1157,72 @@ button {
   animation-duration: 2.1s;
 }
 
+.solar-incoming .core-dot {
+  animation-duration: 0.55s;
+}
+
+.solar-incoming .orbit {
+  animation-duration: 2.2s;
+}
+
+.solar-detonation .core-dot {
+  animation: sun-vanish 1.8s ease-out forwards;
+}
+
+.solar-detonation .orbit {
+  opacity: 0.14;
+  transition: opacity 180ms ease;
+}
+
+.solar-aftermath .core-dot {
+  width: 5%;
+  background: #050505;
+  box-shadow: 0 0 22px rgba(233, 226, 214, 0.06);
+  animation: none;
+}
+
+.solar-aftermath .core-dot::before {
+  opacity: 0;
+}
+
+.solar-aftermath .orbit {
+  opacity: 0.1;
+  animation-play-state: paused;
+  transition: opacity 500ms ease;
+}
+
+.solar-rebirth .core-dot {
+  animation: sun-rebirth 1.5s cubic-bezier(0.15, 0.72, 0.2, 1) forwards;
+}
+
+.solar-rebirth .orbit {
+  animation-duration: 3s;
+}
+
+.is-warping .field-grid {
+  animation: warp-grid 700ms ease-in-out infinite alternate;
+}
+
+.is-warping .core {
+  filter: drop-shadow(0 0 35px rgba(var(--signal-rgb), 0.34));
+}
+
+.is-warping .core-dot {
+  animation-duration: 0.42s;
+}
+
+.is-warping .orbit-one {
+  animation-duration: 0.85s;
+}
+
+.is-warping .orbit-two {
+  animation-duration: 0.58s;
+}
+
+.is-warping .orbit-three {
+  animation-duration: 0.34s;
+}
+
 .axis {
   position: absolute;
   left: 50%;
@@ -1123,6 +1366,85 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.nuke-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  gap: 9px;
+  padding: 0 15px;
+  border: 1px solid rgba(240, 90, 71, 0.58);
+  background: rgba(115, 32, 25, 0.17);
+  color: #ef7768;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+  transition: color 200ms ease, border-color 200ms ease, background 200ms ease, transform 200ms ease;
+}
+
+.nuke-button:hover:not(:disabled) {
+  border-color: #f27766;
+  background: rgba(240, 90, 71, 0.21);
+  color: #ff9b8f;
+  transform: translateY(-1px);
+}
+
+.nuke-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.nuke-emoji {
+  font-size: 15px;
+  line-height: 1;
+  filter: saturate(0.78);
+}
+
+.nuke-button:not(:disabled) .nuke-emoji {
+  animation: nuke-ready 2.2s ease-in-out infinite;
+}
+
+.warp-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid rgba(156, 173, 144, 0.24);
+  background: rgba(18, 17, 15, 0.58);
+  color: #87907d;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+}
+
+.warp-button span {
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.warp-button:hover:not(:disabled) {
+  border-color: var(--sage);
+  background: rgba(156, 173, 144, 0.09);
+  color: var(--paper);
+}
+
+.warp-button:disabled {
+  cursor: wait;
+  opacity: 0.52;
 }
 
 .mode-picker {
@@ -1291,6 +1613,61 @@ button {
   48%, 62% { opacity: 0.75; }
 }
 
+@keyframes missile-drop {
+  0% { top: -72px; opacity: 0; transform: translateX(-50%) scale(0.72); }
+  12% { opacity: 0.78; }
+  82% { opacity: 1; }
+  100% { top: 45%; opacity: 0; transform: translate(-50%, -45%) scale(0.5); }
+}
+
+@keyframes missile-flame {
+  from { transform: scaleY(0.68); opacity: 0.65; }
+  to { transform: scaleY(1.22); opacity: 1; }
+}
+
+@keyframes solar-flash {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.1); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(4.4); }
+}
+
+@keyframes solar-shockwave {
+  0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.12); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(8); }
+}
+
+@keyframes solar-debris {
+  0% { opacity: 1; transform: translate(0, 0) scale(1.6); }
+  100% { opacity: 0; transform: translate(var(--debris-x), var(--debris-y)) scale(0.35); }
+}
+
+@keyframes sun-vanish {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  28% { opacity: 1; transform: translate(-50%, -50%) scale(2.5); background: #fff8e9; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(7); }
+}
+
+@keyframes sun-rebirth {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.05); }
+  62% { opacity: 1; transform: translate(-50%, -50%) scale(1.24); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(0.92); }
+}
+
+@keyframes nuke-ready {
+  50% { opacity: 0.48; transform: scale(0.9); }
+}
+
+@keyframes warp-streak {
+  0% { opacity: 0; translate: 0 0; scale: 0.08 1; }
+  28% { opacity: 0.48; }
+  100% { opacity: 0; translate: 29vw 0; scale: 1.35 1; }
+}
+
+@keyframes warp-grid {
+  from { opacity: 0.2; background-size: 64px 64px; }
+  to { opacity: 0.56; background-size: 92px 92px; }
+}
+
 @media (max-width: 900px) {
   .shell {
     min-height: 100svh;
@@ -1392,6 +1769,12 @@ button {
     align-items: flex-end;
   }
 
+  .field-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
   .mode-picker {
     flex-direction: column;
   }
@@ -1423,6 +1806,10 @@ button {
   }
 
   .space-visitor {
+    display: none;
+  }
+
+  .warp-streaks {
     display: none;
   }
 }

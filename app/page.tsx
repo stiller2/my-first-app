@@ -10,6 +10,7 @@ import {
 
 type Mode = "drift" | "bloom" | "echo";
 type Visitor = "rocket" | "alien";
+type SolarPhase = "idle" | "incoming" | "detonation" | "aftermath" | "rebirth";
 
 type Signal = {
   id: number;
@@ -216,6 +217,59 @@ function playInteractionSound(
   });
 }
 
+function playSolarSound(
+  context: AudioContext,
+  output: AudioNode,
+  stage: "incoming" | "detonation",
+) {
+  const now = context.currentTime;
+
+  if (stage === "incoming") {
+    const whistle = context.createOscillator();
+    const whistleGain = context.createGain();
+    whistle.type = "sawtooth";
+    whistle.frequency.setValueAtTime(520, now);
+    whistle.frequency.exponentialRampToValueAtTime(78, now + 1.5);
+    whistleGain.gain.setValueAtTime(0.0001, now);
+    whistleGain.gain.exponentialRampToValueAtTime(0.034, now + 0.08);
+    whistleGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.55);
+    whistle.connect(whistleGain);
+    whistleGain.connect(output);
+    whistle.start(now);
+    whistle.stop(now + 1.6);
+    return;
+  }
+
+  const impact = context.createBufferSource();
+  const impactFilter = context.createBiquadFilter();
+  const impactGain = context.createGain();
+  const lowTone = context.createOscillator();
+  const lowGain = context.createGain();
+
+  impact.buffer = createNoiseBuffer(context, "echo", 1.8);
+  impactFilter.type = "lowpass";
+  impactFilter.frequency.setValueAtTime(1100, now);
+  impactFilter.frequency.exponentialRampToValueAtTime(90, now + 1.7);
+  impactGain.gain.setValueAtTime(0.18, now);
+  impactGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+  impact.connect(impactFilter);
+  impactFilter.connect(impactGain);
+  impactGain.connect(output);
+
+  lowTone.type = "sine";
+  lowTone.frequency.setValueAtTime(92, now);
+  lowTone.frequency.exponentialRampToValueAtTime(32, now + 1.45);
+  lowGain.gain.setValueAtTime(0.16, now);
+  lowGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.55);
+  lowTone.connect(lowGain);
+  lowGain.connect(output);
+
+  impact.start(now);
+  impact.stop(now + 1.82);
+  lowTone.start(now);
+  lowTone.stop(now + 1.58);
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("drift");
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -226,6 +280,8 @@ export default function Home() {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [volume, setVolume] = useState(0.82);
   const [visitor, setVisitor] = useState<Visitor | null>(null);
+  const [solarPhase, setSolarPhase] = useState<SolarPhase>("idle");
+  const [isWarping, setIsWarping] = useState(false);
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
@@ -423,6 +479,50 @@ export default function Home() {
     timers.current.push(finishTimer);
   }
 
+  async function nukeSun() {
+    if (solarPhase !== "idle" || isWarping) return;
+    const context = await ensureAudio();
+    const output = audioBus.current?.input;
+
+    setSolarPhase("incoming");
+    if (context && output) playSolarSound(context, output, "incoming");
+
+    const detonationTimer = window.setTimeout(() => {
+      setSolarPhase("detonation");
+      if (context && output) playSolarSound(context, output, "detonation");
+    }, 1550);
+    const aftermathTimer = window.setTimeout(
+      () => setSolarPhase("aftermath"),
+      3750,
+    );
+    const rebirthTimer = window.setTimeout(
+      () => setSolarPhase("rebirth"),
+      5350,
+    );
+    const resetTimer = window.setTimeout(
+      () => setSolarPhase("idle"),
+      6900,
+    );
+    timers.current.push(
+      detonationTimer,
+      aftermathTimer,
+      rebirthTimer,
+      resetTimer,
+    );
+  }
+
+  async function triggerTimeWarp() {
+    if (isWarping || solarPhase !== "idle") return;
+    const context = await ensureAudio();
+    if (context && audioBus.current) {
+      playInteractionSound(context, "echo", audioBus.current.input, 4);
+    }
+
+    setIsWarping(true);
+    const warpTimer = window.setTimeout(() => setIsWarping(false), 4200);
+    timers.current.push(warpTimer);
+  }
+
   function resetField() {
     timers.current.forEach(window.clearTimeout);
     timers.current = [];
@@ -430,9 +530,18 @@ export default function Home() {
     setSignalCount(0);
     setIsActive(false);
     setIsConstellating(false);
+    setSolarPhase("idle");
+    setIsWarping(false);
   }
 
   const currentMode = modes.find((item) => item.id === mode)!;
+  const solarStatus: Record<SolarPhase, string> = {
+    idle: "Nuke sun",
+    incoming: "Incoming…",
+    detonation: "Detonated",
+    aftermath: "Sun offline",
+    rebirth: "Reforming…",
+  };
 
   return (
     <main className={`shell theme-${mode}`}>
@@ -501,7 +610,7 @@ export default function Home() {
         </div>
 
         <div
-          className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${visitor ? "has-visitor" : ""}`}
+          className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${isWarping ? "is-warping" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase}`}
           onPointerDown={(event) => void handleFieldPointer(event)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -521,6 +630,11 @@ export default function Home() {
           <div className="star-glints" aria-hidden="true">
             <i /><i /><i /><i />
           </div>
+          {isWarping && (
+            <div className="warp-streaks" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i />
+            </div>
+          )}
 
           {visitor === "rocket" && (
             <div className="space-visitor rocket-visitor" aria-hidden="true">
@@ -536,6 +650,25 @@ export default function Home() {
               <span className="alien-beam" />
               <span className="alien-dome"><i /><i /></span>
               <span className="alien-hull"><i /><i /><i /></span>
+            </div>
+          )}
+
+          {solarPhase === "incoming" && (
+            <div className="sun-missile" aria-hidden="true">
+              <span className="missile-flame" />
+              <span className="missile-body"><i /></span>
+              <span className="missile-fins" />
+            </div>
+          )}
+
+          {solarPhase === "detonation" && (
+            <div className="solar-explosion" aria-hidden="true">
+              <span className="explosion-flash" />
+              <span className="shockwave shockwave-one" />
+              <span className="shockwave shockwave-two" />
+              <span className="solar-debris">
+                <i /><i /><i /><i /><i /><i /><i /><i />
+              </span>
             </div>
           )}
 
@@ -560,7 +693,17 @@ export default function Home() {
           ))}
 
           <p className="field-coordinate" aria-live="polite">
-            {visitor === "rocket"
+            {solarPhase === "incoming"
+              ? "Incoming object · this seems unwise"
+              : solarPhase === "detonation"
+                ? "Solar integrity · 0%"
+                : solarPhase === "aftermath"
+                  ? "Sun offline · please stand by"
+                  : solarPhase === "rebirth"
+                    ? "Stellar reboot · 87%"
+                    : isWarping
+                      ? "Temporal velocity · 8×"
+                    : visitor === "rocket"
               ? "Local transit · RV—01"
               : visitor === "alien"
                 ? "Unidentified visitor · seems friendly"
@@ -585,9 +728,30 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <button className="reset-button" type="button" onClick={resetField}>
-              Clear field
-            </button>
+            <div className="field-actions">
+              <button
+                className="warp-button"
+                type="button"
+                onClick={() => void triggerTimeWarp()}
+                disabled={isWarping || solarPhase !== "idle"}
+              >
+                <span aria-hidden="true">↻</span>
+                {isWarping ? "Warping…" : "Time warp"}
+              </button>
+              <button
+                className="nuke-button"
+                type="button"
+                onClick={() => void nukeSun()}
+                disabled={solarPhase !== "idle" || isWarping}
+                aria-label="Launch a fictional missile at the sun"
+              >
+                <span className="nuke-emoji" aria-hidden="true">☢️</span>
+                {solarStatus[solarPhase]}
+              </button>
+              <button className="reset-button" type="button" onClick={resetField}>
+                Clear field
+              </button>
+            </div>
           </div>
         </div>
       </section>
