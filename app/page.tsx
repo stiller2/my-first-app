@@ -1217,8 +1217,6 @@ export default function Home() {
               </div>
               <div className="canopy-strut strut-left"><i /></div>
               <div className="canopy-strut strut-right"><i /></div>
-              <div className="cross-brace cross-brace-left" />
-              <div className="cross-brace cross-brace-right" />
               <div className="side-window side-window-left">
                 <i /><i /><i /><i /><i />
               </div>
