@@ -10,17 +10,17 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: new URL(origin),
-    title: "DRIFT — Guhan's white noise website",
-    description: "Guhan's interactive white noise website. Leave a signal, hear it bloom, and watch it drift.",
+    title: "DRIFT — Guhan's focus and white noise space",
+    description: "A quiet space for meditation, white noise, and 20 or 60 minute focus voyages.",
     openGraph: {
       title: "DRIFT",
-      description: "A quiet place to make some noise.",
-      images: [{ url: `${origin}/og.png`, width: 1200, height: 630, alt: "DRIFT — A quiet place to make some noise." }],
+      description: "A quiet orbit for meditation, white noise, and deep focus.",
+      images: [{ url: `${origin}/og.png`, width: 1200, height: 630, alt: "DRIFT — A quiet orbit for meditation and focus." }],
     },
     twitter: {
       card: "summary_large_image",
       title: "DRIFT",
-      description: "A quiet place to make some noise.",
+      description: "A quiet orbit for meditation, white noise, and deep focus.",
       images: [`${origin}/og.png`],
     },
   };

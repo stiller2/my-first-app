@@ -35,20 +35,20 @@ const modes: { id: Mode; label: string; note: string; detail: string }[] = [
   {
     id: "drift",
     label: "Drift",
-    note: "brown noise / falling tones",
-    detail: "Slow rings, warm brown noise, and low descending chimes.",
+    note: "brown noise / grounded calm",
+    detail: "Warm brown noise and low tones for settling into the moment.",
   },
   {
     id: "bloom",
     label: "Bloom",
-    note: "pink noise / soft chords",
-    detail: "Opening petals, breathing pink noise, and gentle major chords.",
+    note: "pink noise / open focus",
+    detail: "Breathing pink noise and soft chords for clear, gentle focus.",
   },
   {
     id: "echo",
     label: "Echo",
-    note: "air noise / distant repeats",
-    detail: "Broken geometry, filtered air, and small sounds that repeat away.",
+    note: "air noise / spacious quiet",
+    detail: "Filtered air and distant echoes for giving busy thoughts more room.",
   },
 ];
 
@@ -794,7 +794,7 @@ export default function Home() {
           <span className="brand-mark" aria-hidden="true" />
           DRIFT
         </a>
-        <p className="edition">Guhan&apos;s white noise website · No. 001</p>
+        <p className="edition">Guhan&apos;s white noise focus space · No. 001</p>
         <div className="volume-control">
           <button
             className="speaker-button"
@@ -827,19 +827,19 @@ export default function Home() {
 
       <section className="experience" id="top">
         <div className="intro">
-          <p className="eyebrow">An instrument for idle hands</p>
+          <p className="eyebrow">Meditation and focus, in orbit</p>
           <h1>
             Make a little
-            <span>noise.</span>
+            <span>space.</span>
           </h1>
           <p className="lede">
-            A quiet corner of the internet that responds to your touch. No
-            score. No objective. Just leave a signal and watch it drift.
+            Choose a timer. Settle into white noise. Let the stars move while
+            your mind stays here.
           </p>
           <div className="focus-launcher" aria-labelledby="focus-title">
             <div>
-              <p className="focus-kicker">Deep space session</p>
-              <h2 id="focus-title">Clear the noise. Keep the stars.</h2>
+              <p className="focus-kicker">Choose your voyage</p>
+              <h2 id="focus-title">Breathe. Focus. Drift.</h2>
             </div>
             <div className="focus-options">
               <button type="button" onClick={() => void startFocusSession(20)}>
@@ -858,14 +858,14 @@ export default function Home() {
             onClick={() => void launchConstellation()}
             disabled={isConstellating}
           >
-            <span>{isConstellating ? "Drawing the sky…" : "Release a constellation"}</span>
+            <span>{isConstellating ? "Setting the stars…" : "Scatter a constellation"}</span>
             <span className="constellation-mark" aria-hidden="true">
               <i /><i /><i />
             </span>
           </button>
           <div className="intro-meta">
-            <span>Sound starts on first touch</span>
-            <span>Every mode sounds different</span>
+            <span>20 &amp; 60 minute focus voyages</span>
+            <span>Three ways to find quiet</span>
           </div>
         </div>
 
@@ -883,7 +883,7 @@ export default function Home() {
           }}
           role="button"
           tabIndex={0}
-          aria-label="Interactive signal field. Click, tap, or press Enter to add a signal."
+          aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal."
         >
           <div className="field-grid" aria-hidden="true" />
           <div className="ambient ambient-one" aria-hidden="true" />
@@ -1068,18 +1068,18 @@ export default function Home() {
             >
               <div className="focus-hud-brand">
                 <span className="brand-mark" aria-hidden="true" />
-                <span>Deep space</span>
-                <small>{focusDuration} minute orbit</small>
+                <span>DRIFT focus</span>
+                <small>{focusDuration} minute voyage</small>
               </div>
               <div className="focus-clock" aria-live="polite">
                 <span>
                   {remainingSeconds === 0
-                    ? "Session complete"
+                    ? "Orbit complete"
                     : sessionPaused
-                      ? "Holding orbit"
+                      ? "Holding still"
                       : flightPhase === "hyperspace"
-                        ? "Hyperspace insertion"
-                        : "Deep-space cruise"}
+                        ? "Leaving the noise"
+                        : "Focus orbit"}
                 </span>
                 <strong>{focusTime}</strong>
                 <i aria-hidden="true" />
@@ -1093,7 +1093,7 @@ export default function Home() {
                   {sessionPaused && remainingSeconds > 0 ? "Continue" : "Pause"}
                 </button>
                 <label>
-                  <span>Sound</span>
+                  <span>Cabin</span>
                   <input
                     type="range"
                     min="0"
@@ -1143,10 +1143,10 @@ export default function Home() {
               ? "Local transit · RV—01"
               : visitor === "alien"
                 ? "Unidentified visitor · seems friendly"
-                : "34° 03′ N   /   118° 15′ W"}
+                : "Quiet sector · breathe slowly"}
           </p>
           <p className="field-hint">
-            <span aria-hidden="true">↖</span> Click anywhere to leave a signal
+            <span aria-hidden="true">↖</span> Tap the stars when your mind wanders
           </p>
 
           <div className="field-controls" onPointerDown={(event) => event.stopPropagation()}>
@@ -1210,13 +1210,13 @@ export default function Home() {
       <footer className="statusbar">
         <p>
           <span className="status-pulse" aria-hidden="true" />
-          Field {isActive ? "awake" : "resting"}
+          Orbit {isActive ? "awake" : "resting"}
         </p>
         <p className="mode-readout">
           {currentMode.label} <span>{currentMode.note}</span>
         </p>
         <p className="signal-count">
-          {String(signalCount).padStart(2, "0")} signal{signalCount === 1 ? "" : "s"}
+          {String(signalCount).padStart(2, "0")} star{signalCount === 1 ? "" : "s"} placed
         </p>
       </footer>
     </main>
