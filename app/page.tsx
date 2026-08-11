@@ -11,6 +11,7 @@ import {
 type Mode = "drift" | "bloom" | "echo";
 type Visitor = "rocket" | "alien";
 type SolarPhase = "idle" | "incoming" | "detonation" | "aftermath" | "rebirth";
+type FieldFeature = "craft" | "meteors" | "eclipse";
 
 type Signal = {
   id: number;
@@ -227,11 +228,11 @@ function playSolarSound(
   if (stage === "incoming") {
     const whistle = context.createOscillator();
     const whistleGain = context.createGain();
-    whistle.type = "sawtooth";
+    whistle.type = "triangle";
     whistle.frequency.setValueAtTime(520, now);
     whistle.frequency.exponentialRampToValueAtTime(78, now + 1.5);
     whistleGain.gain.setValueAtTime(0.0001, now);
-    whistleGain.gain.exponentialRampToValueAtTime(0.034, now + 0.08);
+    whistleGain.gain.exponentialRampToValueAtTime(0.024, now + 0.08);
     whistleGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.55);
     whistle.connect(whistleGain);
     whistleGain.connect(output);
@@ -250,7 +251,7 @@ function playSolarSound(
   impactFilter.type = "lowpass";
   impactFilter.frequency.setValueAtTime(1100, now);
   impactFilter.frequency.exponentialRampToValueAtTime(90, now + 1.7);
-  impactGain.gain.setValueAtTime(0.18, now);
+  impactGain.gain.setValueAtTime(0.11, now);
   impactGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
   impact.connect(impactFilter);
   impactFilter.connect(impactGain);
@@ -259,7 +260,7 @@ function playSolarSound(
   lowTone.type = "sine";
   lowTone.frequency.setValueAtTime(92, now);
   lowTone.frequency.exponentialRampToValueAtTime(32, now + 1.45);
-  lowGain.gain.setValueAtTime(0.16, now);
+  lowGain.gain.setValueAtTime(0.12, now);
   lowGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.55);
   lowTone.connect(lowGain);
   lowGain.connect(output);
@@ -268,6 +269,79 @@ function playSolarSound(
   impact.stop(now + 1.82);
   lowTone.start(now);
   lowTone.stop(now + 1.58);
+}
+
+function playFeatureSound(
+  context: AudioContext,
+  output: AudioNode,
+  feature: FieldFeature,
+) {
+  const now = context.currentTime;
+
+  if (feature === "craft") {
+    const delay = context.createDelay(1);
+    const echoGain = context.createGain();
+    delay.delayTime.value = 0.34;
+    echoGain.gain.value = 0.22;
+    delay.connect(echoGain);
+    echoGain.connect(output);
+
+    [392, 523.25, 659.25].forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const startAt = now + index * 0.3;
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.036, startAt + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 1.25);
+      oscillator.connect(gain);
+      gain.connect(output);
+      gain.connect(delay);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 1.3);
+    });
+    return;
+  }
+
+  if (feature === "meteors") {
+    [1174.66, 987.77, 1318.51, 880, 1046.5, 1567.98].forEach(
+      (frequency, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const startAt = now + index * 0.13;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, startAt);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          frequency * 0.68,
+          startAt + 1.05,
+        );
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.022, startAt + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 1.1);
+        oscillator.connect(gain);
+        gain.connect(output);
+        oscillator.start(startAt);
+        oscillator.stop(startAt + 1.12);
+      },
+    );
+    return;
+  }
+
+  [110, 164.81, 220].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = index === 0 ? "sine" : "triangle";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.025 / (index + 1), now + 0.8);
+    gain.gain.setValueAtTime(0.025 / (index + 1), now + 2.6);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 4.5);
+    oscillator.connect(gain);
+    gain.connect(output);
+    oscillator.start(now);
+    oscillator.stop(now + 4.55);
+  });
 }
 
 export default function Home() {
@@ -281,7 +355,7 @@ export default function Home() {
   const [volume, setVolume] = useState(0.82);
   const [visitor, setVisitor] = useState<Visitor | null>(null);
   const [solarPhase, setSolarPhase] = useState<SolarPhase>("idle");
-  const [isWarping, setIsWarping] = useState(false);
+  const [activeFeature, setActiveFeature] = useState<FieldFeature | null>(null);
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
@@ -289,8 +363,9 @@ export default function Home() {
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
+    const activeTimers = timers.current;
     return () => {
-      timers.current.forEach(window.clearTimeout);
+      activeTimers.forEach(window.clearTimeout);
       ambientVoice.current?.stop();
       void audioContext.current?.close();
     };
@@ -480,7 +555,7 @@ export default function Home() {
   }
 
   async function nukeSun() {
-    if (solarPhase !== "idle" || isWarping) return;
+    if (solarPhase !== "idle" || activeFeature) return;
     const context = await ensureAudio();
     const output = audioBus.current?.input;
 
@@ -511,27 +586,25 @@ export default function Home() {
     );
   }
 
-  async function triggerTimeWarp() {
-    if (isWarping || solarPhase !== "idle") return;
+  async function triggerFeature(feature: FieldFeature) {
+    if (activeFeature || solarPhase !== "idle") return;
     const context = await ensureAudio();
+    const duration: Record<FieldFeature, number> = {
+      craft: 9000,
+      meteors: 5200,
+      eclipse: 7200,
+    };
+
     if (context && audioBus.current) {
-      playInteractionSound(context, "echo", audioBus.current.input, 4);
+      playFeatureSound(context, audioBus.current.input, feature);
     }
 
-    setIsWarping(true);
-    const warpTimer = window.setTimeout(() => setIsWarping(false), 4200);
-    timers.current.push(warpTimer);
-  }
-
-  function resetField() {
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
-    setSignals([]);
-    setSignalCount(0);
-    setIsActive(false);
-    setIsConstellating(false);
-    setSolarPhase("idle");
-    setIsWarping(false);
+    setActiveFeature(feature);
+    const featureTimer = window.setTimeout(
+      () => setActiveFeature(null),
+      duration[feature],
+    );
+    timers.current.push(featureTimer);
   }
 
   const currentMode = modes.find((item) => item.id === mode)!;
@@ -610,7 +683,7 @@ export default function Home() {
         </div>
 
         <div
-          className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${isWarping ? "is-warping" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase}`}
+          className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase} feature-${activeFeature ?? "idle"}`}
           onPointerDown={(event) => void handleFieldPointer(event)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -630,11 +703,6 @@ export default function Home() {
           <div className="star-glints" aria-hidden="true">
             <i /><i /><i /><i />
           </div>
-          {isWarping && (
-            <div className="warp-streaks" aria-hidden="true">
-              <i /><i /><i /><i /><i /><i />
-            </div>
-          )}
 
           {visitor === "rocket" && (
             <div className="space-visitor rocket-visitor" aria-hidden="true">
@@ -650,6 +718,30 @@ export default function Home() {
               <span className="alien-beam" />
               <span className="alien-dome"><i /><i /></span>
               <span className="alien-hull"><i /><i /><i /></span>
+            </div>
+          )}
+
+          {activeFeature === "craft" && (
+            <div className="deployed-craft" aria-hidden="true">
+              <span className="craft-beam craft-beam-one" />
+              <span className="craft-beam craft-beam-two" />
+              <span className="craft-panel craft-panel-left"><i /></span>
+              <span className="craft-body"><i /></span>
+              <span className="craft-panel craft-panel-right"><i /></span>
+            </div>
+          )}
+
+          {activeFeature === "meteors" && (
+            <div className="meteor-shower" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i /><i />
+            </div>
+          )}
+
+          {activeFeature === "eclipse" && (
+            <div className="eclipse-moon" aria-hidden="true">
+              <span className="eclipse-corona" />
+              <span className="diamond-flare" />
+              <i /><i /><i />
             </div>
           )}
 
@@ -701,8 +793,12 @@ export default function Home() {
                   ? "Sun offline · please stand by"
                   : solarPhase === "rebirth"
                     ? "Stellar reboot · 87%"
-                    : isWarping
-                      ? "Temporal velocity · 8×"
+                    : activeFeature === "craft"
+                      ? "Orbital craft · deployment nominal"
+                      : activeFeature === "meteors"
+                        ? "Meteor shower · look up"
+                        : activeFeature === "eclipse"
+                          ? "Totality · light falling"
                     : visitor === "rocket"
               ? "Local transit · RV—01"
               : visitor === "alien"
@@ -730,26 +826,41 @@ export default function Home() {
             </div>
             <div className="field-actions">
               <button
-                className="warp-button"
-                type="button"
-                onClick={() => void triggerTimeWarp()}
-                disabled={isWarping || solarPhase !== "idle"}
-              >
-                <span aria-hidden="true">↻</span>
-                {isWarping ? "Warping…" : "Time warp"}
-              </button>
-              <button
                 className="nuke-button"
                 type="button"
                 onClick={() => void nukeSun()}
-                disabled={solarPhase !== "idle" || isWarping}
+                disabled={solarPhase !== "idle" || activeFeature !== null}
                 aria-label="Launch a fictional missile at the sun"
               >
-                <span className="nuke-emoji" aria-hidden="true">☢️</span>
+                <span className="nuke-emoji" aria-hidden="true">🚀︎</span>
                 {solarStatus[solarPhase]}
               </button>
-              <button className="reset-button" type="button" onClick={resetField}>
-                Clear field
+              <button
+                className="feature-button"
+                type="button"
+                onClick={() => void triggerFeature("craft")}
+                disabled={solarPhase !== "idle" || activeFeature !== null}
+              >
+                <span aria-hidden="true">◇</span>
+                Deploy craft
+              </button>
+              <button
+                className="feature-button"
+                type="button"
+                onClick={() => void triggerFeature("meteors")}
+                disabled={solarPhase !== "idle" || activeFeature !== null}
+              >
+                <span aria-hidden="true">☄︎</span>
+                Meteors
+              </button>
+              <button
+                className="feature-button"
+                type="button"
+                onClick={() => void triggerFeature("eclipse")}
+                disabled={solarPhase !== "idle" || activeFeature !== null}
+              >
+                <span aria-hidden="true">◐</span>
+                Eclipse
               </button>
             </div>
           </div>
