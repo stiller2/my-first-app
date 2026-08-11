@@ -784,6 +784,18 @@ export default function Home() {
     rebirth: "Reforming…",
   };
   const focusTime = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+  const focusProgress = focusDuration
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          ((focusDuration * 60 - remainingSeconds) / (focusDuration * 60)) *
+            100,
+        ),
+      )
+    : 0;
+  const focusProgressPercent = Math.round(focusProgress);
+  const rocketPosition = 2 + focusProgress * 0.96;
 
   return (
     <main
@@ -1013,6 +1025,16 @@ export default function Home() {
                 <div className="dashboard-ridge">
                   <span /><span /><span /><span /><span /><span /><span />
                 </div>
+                <div className="auxiliary-pod pod-left">
+                  <span className="mini-dial"><i /></span>
+                  <span className="mini-dial"><i /></span>
+                  <small>ION</small>
+                </div>
+                <div className="auxiliary-pod pod-right">
+                  <span className="mini-slider"><i /></span>
+                  <span className="mini-slider"><i /></span>
+                  <span className="mini-slider"><i /></span>
+                </div>
                 <section className="alien-console console-left">
                   <div className="console-label">ᖶᖇ // SCAN ARRAY</div>
                   <div className="alien-radar">
@@ -1022,6 +1044,9 @@ export default function Home() {
                   <div className="glyph-strip">⌁ ⟟ ⊹ ᚫ ⌬ ᖶ ⧖</div>
                   <div className="micro-readouts">
                     <span>Θ 7.884</span><span>Δ 03.11</span><span>Ψ LOCK</span>
+                  </div>
+                  <div className="spectral-bars">
+                    <i /><i /><i /><i /><i /><i /><i /><i />
                   </div>
                 </section>
                 <section className="alien-console console-center">
@@ -1037,6 +1062,11 @@ export default function Home() {
                   <div className="touch-keys">
                     <i /><i /><i /><i /><i /><i /><i /><i />
                   </div>
+                  <div className="telemetry-stack">
+                    <span><b>ᚫ</b> 42.7</span>
+                    <span><b>ϟ</b> 08.3</span>
+                    <span><b>⌁</b> SYNC</span>
+                  </div>
                 </section>
                 <section className="alien-console console-right">
                   <div className="console-label">BIO-LINK // STABLE</div>
@@ -1047,6 +1077,9 @@ export default function Home() {
                     <span style={{ "--gauge": "194deg" } as CSSProperties}><i />72</span>
                     <span style={{ "--gauge": "238deg" } as CSSProperties}><i />88</span>
                     <span style={{ "--gauge": "173deg" } as CSSProperties}><i />64</span>
+                  </div>
+                  <div className="power-matrix">
+                    <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
                   </div>
                   <div className="glyph-strip">ᒪ ∷ ⧫ ⌇ ᖵ ◌ ⊢</div>
                 </section>
@@ -1082,6 +1115,29 @@ export default function Home() {
                         : "Focus orbit"}
                 </span>
                 <strong>{focusTime}</strong>
+                <div
+                  className="flight-progress"
+                  role="progressbar"
+                  aria-label="Focus voyage completion"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={focusProgressPercent}
+                  style={
+                    {
+                      "--focus-progress": `${focusProgress}%`,
+                      "--rocket-position": `${rocketPosition}%`,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="progress-copy">
+                    <span>Voyage</span>
+                    <b>{focusProgressPercent}%</b>
+                  </div>
+                  <div className="progress-track">
+                    <span className="progress-fill" />
+                    <span className="progress-rocket"><i /></span>
+                  </div>
+                </div>
                 <i aria-hidden="true" />
               </div>
               <div className="focus-hud-controls">
