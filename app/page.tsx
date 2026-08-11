@@ -2,6 +2,7 @@
 
 import {
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent,
   useEffect,
   useRef,
@@ -16,6 +17,13 @@ type FocusDuration = 20 | 60;
 type FlightPhase = "hyperspace" | "cruise" | "arrival";
 
 type Signal = {
+  id: number;
+  x: number;
+  y: number;
+  mode: Mode;
+};
+
+type DeepScan = {
   id: number;
   x: number;
   y: number;
@@ -317,6 +325,32 @@ function playInteractionSound(
   });
 }
 
+function playDeepScanSound(context: AudioContext, output: AudioNode) {
+  const now = context.currentTime;
+  const frequencies = [432, 288, 216];
+
+  frequencies.forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const startAt = now + index * 0.13;
+    const duration = 2.2 + index * 0.26;
+
+    oscillator.type = index === 0 ? "sine" : "triangle";
+    oscillator.frequency.setValueAtTime(frequency, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(
+      frequency * (index === 2 ? 1.45 : 0.72),
+      startAt + duration,
+    );
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.045 / (index + 1), startAt + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+    oscillator.connect(gain);
+    gain.connect(output);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + duration + 0.04);
+  });
+}
+
 function playSolarSound(
   context: AudioContext,
   output: AudioNode,
@@ -502,6 +536,7 @@ function playHyperspaceSound(context: AudioContext, output: AudioNode) {
 export default function Home() {
   const [mode, setMode] = useState<Mode>("drift");
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [deepScan, setDeepScan] = useState<DeepScan | null>(null);
   const [soundOn, setSoundOn] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [isConstellating, setIsConstellating] = useState(false);
@@ -729,6 +764,7 @@ export default function Home() {
 
   async function handleFieldPointer(event: PointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("button")) return;
+    if (event.detail > 1) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const context = await ensureAudio();
     emitSignal(
@@ -752,10 +788,34 @@ export default function Home() {
   }
 
   function resetFieldParallax(event: PointerEvent<HTMLDivElement>) {
-    event.currentTarget.style.setProperty("--look-x", "0");
-    event.currentTarget.style.setProperty("--look-y", "0");
-    event.currentTarget.style.setProperty("--look-far-x", "0");
-    event.currentTarget.style.setProperty("--look-far-y", "0");
+    event.currentTarget.style.setProperty("--look-x", "0px");
+    event.currentTarget.style.setProperty("--look-y", "0px");
+    event.currentTarget.style.setProperty("--look-far-x", "0px");
+    event.currentTarget.style.setProperty("--look-far-y", "0px");
+  }
+
+  async function handleFieldDoubleClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button, input") || focusDuration) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const id = nextId.current++;
+    const scan = {
+      id,
+      x: ((event.clientX - bounds.left) / bounds.width) * 100,
+      y: ((event.clientY - bounds.top) / bounds.height) * 100,
+      mode,
+    };
+
+    setDeepScan(scan);
+    const context = await ensureAudio();
+    if (context?.state === "running" && audioBus.current) {
+      playDeepScanSound(context, audioBus.current.input);
+    }
+
+    const timer = window.setTimeout(() => {
+      setDeepScan((current) => current?.id === id ? null : current);
+    }, 5200);
+    timers.current.push(timer);
   }
 
   async function handleSoundToggle() {
@@ -998,6 +1058,7 @@ export default function Home() {
           onPointerDown={(event) => void handleFieldPointer(event)}
           onPointerMove={handleFieldPointerMove}
           onPointerLeave={resetFieldParallax}
+          onDoubleClick={(event) => void handleFieldDoubleClick(event)}
           onKeyDown={(event) => {
             if ((event.target as HTMLElement).closest("button, input")) return;
             if (event.key === "Enter" || event.key === " ") {
@@ -1009,7 +1070,7 @@ export default function Home() {
           }}
           role="button"
           tabIndex={0}
-          aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal."
+          aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal. Double-click to run a deep-space scan."
         >
           <div className="field-grid" aria-hidden="true" />
           <div className="observatory-frame" aria-hidden="true">
@@ -1194,6 +1255,13 @@ export default function Home() {
                   <span className="mini-slider"><i /></span>
                   <span className="mini-slider"><i /></span>
                   <span className="mini-slider"><i /></span>
+                </div>
+                <div className="left-flight-bank">
+                  <small>AUX // 07</small>
+                  <span className="bank-dial"><i /></span>
+                  <span className="bank-readout">ϟ 84</span>
+                  <span className="bank-bars"><i /><i /><i /><i /></span>
+                  <span className="bank-switches"><i /><i /><i /></span>
                 </div>
                 <section className="alien-console console-left">
                   <div className="console-label">
@@ -1385,6 +1453,19 @@ export default function Home() {
             </span>
           ))}
 
+          {deepScan && (
+            <span
+              className={`deep-space-scan scan-${deepScan.mode}`}
+              key={deepScan.id}
+              style={{ "--scan-x": `${deepScan.x}%`, "--scan-y": `${deepScan.y}%` } as CSSProperties}
+              aria-hidden="true"
+            >
+              <span className="scan-lens" />
+              <span className="scan-orbit"><i /><i /></span>
+              <small>DEEP SCAN</small>
+            </span>
+          )}
+
           <p className="field-coordinate" aria-live="polite">
             {solarPhase === "incoming"
               ? "Incoming object · this seems unwise"
@@ -1407,7 +1488,7 @@ export default function Home() {
                 : "Quiet sector · breathe slowly"}
           </p>
           <p className="field-hint">
-            <span aria-hidden="true">↖</span> Tap the stars when your mind wanders
+            <span aria-hidden="true">↖</span> Tap to settle · double-click to scan
           </p>
 
           <div className="field-controls" onPointerDown={(event) => event.stopPropagation()}>
