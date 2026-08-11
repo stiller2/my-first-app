@@ -12,6 +12,7 @@ type Mode = "drift" | "bloom" | "echo";
 type Visitor = "rocket" | "alien";
 type SolarPhase = "idle" | "incoming" | "detonation" | "aftermath" | "rebirth";
 type FieldFeature = "craft" | "meteors" | "eclipse";
+type FocusDuration = 20 | 60;
 
 type Signal = {
   id: number;
@@ -344,6 +345,25 @@ function playFeatureSound(
   });
 }
 
+function playFocusBell(context: AudioContext, output: AudioNode) {
+  const now = context.currentTime;
+
+  [523.25, 783.99].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const startAt = now + index * 0.22;
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.026, startAt + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 2.2);
+    oscillator.connect(gain);
+    gain.connect(output);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 2.25);
+  });
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("drift");
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -356,11 +376,16 @@ export default function Home() {
   const [visitor, setVisitor] = useState<Visitor | null>(null);
   const [solarPhase, setSolarPhase] = useState<SolarPhase>("idle");
   const [activeFeature, setActiveFeature] = useState<FieldFeature | null>(null);
+  const [focusDuration, setFocusDuration] = useState<FocusDuration | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [sessionPaused, setSessionPaused] = useState(false);
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
   const ambientVoice = useRef<AmbientVoice | null>(null);
   const timers = useRef<number[]>([]);
+  const focusDeadline = useRef<number | null>(null);
+  const remainingSecondsRef = useRef(0);
 
   useEffect(() => {
     const activeTimers = timers.current;
@@ -370,6 +395,40 @@ export default function Home() {
       void audioContext.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!focusDuration) return;
+
+    document.body.classList.add("focus-session-open");
+    return () => document.body.classList.remove("focus-session-open");
+  }, [focusDuration]);
+
+  useEffect(() => {
+    if (!focusDuration || sessionPaused || remainingSecondsRef.current === 0) return;
+
+    focusDeadline.current = Date.now() + remainingSecondsRef.current * 1000;
+    const interval = window.setInterval(() => {
+      const deadline = focusDeadline.current;
+      if (!deadline) return;
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((deadline - Date.now()) / 1000),
+      );
+
+      remainingSecondsRef.current = nextRemaining;
+      setRemainingSeconds(nextRemaining);
+      if (nextRemaining === 0) {
+        window.clearInterval(interval);
+        setSessionPaused(true);
+        const context = audioContext.current;
+        if (context?.state === "running" && audioBus.current) {
+          playFocusBell(context, audioBus.current.input);
+        }
+      }
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [focusDuration, sessionPaused]);
 
   useEffect(() => {
     let arrivalTimer = 0;
@@ -607,6 +666,29 @@ export default function Home() {
     timers.current.push(featureTimer);
   }
 
+  async function startFocusSession(duration: FocusDuration) {
+    await ensureAudio();
+    setFocusDuration(duration);
+    setRemainingSeconds(duration * 60);
+    remainingSecondsRef.current = duration * 60;
+    setSessionPaused(false);
+    setActiveFeature(null);
+    setSolarPhase("idle");
+  }
+
+  function endFocusSession() {
+    setFocusDuration(null);
+    setRemainingSeconds(0);
+    remainingSecondsRef.current = 0;
+    setSessionPaused(false);
+    focusDeadline.current = null;
+  }
+
+  function toggleSessionPause() {
+    if (remainingSeconds === 0) return;
+    setSessionPaused((paused) => !paused);
+  }
+
   const currentMode = modes.find((item) => item.id === mode)!;
   const solarStatus: Record<SolarPhase, string> = {
     idle: "Nuke sun",
@@ -615,9 +697,10 @@ export default function Home() {
     aftermath: "Sun offline",
     rebirth: "Reforming…",
   };
+  const focusTime = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
   return (
-    <main className={`shell theme-${mode}`}>
+    <main className={`shell theme-${mode} ${focusDuration ? "is-focus-session" : ""}`}>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Drift, back to top">
           <span className="brand-mark" aria-hidden="true" />
@@ -665,6 +748,22 @@ export default function Home() {
             A quiet corner of the internet that responds to your touch. No
             score. No objective. Just leave a signal and watch it drift.
           </p>
+          <div className="focus-launcher" aria-labelledby="focus-title">
+            <div>
+              <p className="focus-kicker">Deep space session</p>
+              <h2 id="focus-title">Clear the noise. Keep the stars.</h2>
+            </div>
+            <div className="focus-options">
+              <button type="button" onClick={() => void startFocusSession(20)}>
+                <span>Gentle focus</span>
+                <strong>20 min</strong>
+              </button>
+              <button type="button" onClick={() => void startFocusSession(60)}>
+                <span>Deep focus</span>
+                <strong>60 min</strong>
+              </button>
+            </div>
+          </div>
           <button
             className={`enter-button constellation-button ${isConstellating ? "is-casting" : ""}`}
             type="button"
@@ -701,7 +800,13 @@ export default function Home() {
           <div className="ambient ambient-one" aria-hidden="true" />
           <div className="ambient ambient-two" aria-hidden="true" />
           <div className="star-glints" aria-hidden="true">
-            <i /><i /><i /><i />
+            <i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="slow-drifters" aria-hidden="true">
+            <span className="drifter ringed-world"><i /></span>
+            <span className="drifter crescent-world" />
+            <span className="drifter far-satellite"><i /><i /></span>
+            <span className="drifter dust-cloud" />
           </div>
 
           {visitor === "rocket" && (
@@ -772,6 +877,56 @@ export default function Home() {
             <span className="axis axis-x" />
             <span className="axis axis-y" />
           </div>
+
+          {focusDuration && (
+            <div
+              className="focus-hud"
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <div className="focus-hud-brand">
+                <span className="brand-mark" aria-hidden="true" />
+                <span>Deep space</span>
+                <small>{focusDuration} minute orbit</small>
+              </div>
+              <div className="focus-clock" aria-live="polite">
+                <span>
+                  {remainingSeconds === 0
+                    ? "Session complete"
+                    : sessionPaused
+                      ? "Holding orbit"
+                      : "Gentle focus"}
+                </span>
+                <strong>{focusTime}</strong>
+                <i aria-hidden="true" />
+              </div>
+              <div className="focus-hud-controls">
+                <button
+                  type="button"
+                  onClick={toggleSessionPause}
+                  disabled={remainingSeconds === 0}
+                >
+                  {sessionPaused && remainingSeconds > 0 ? "Continue" : "Pause"}
+                </button>
+                <label>
+                  <span>Sound</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round(volume * 100)}
+                    onChange={(event) =>
+                      void handleVolumeChange(Number(event.target.value) / 100)
+                    }
+                    aria-label="Focus session sound volume"
+                  />
+                </label>
+                <button type="button" onClick={endFocusSession}>
+                  Exit session
+                </button>
+              </div>
+            </div>
+          )}
 
           {signals.map((signal) => (
             <span
