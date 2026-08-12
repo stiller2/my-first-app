@@ -561,16 +561,20 @@ export default function Home() {
   const nextId = useRef(1);
   const audioContext = useRef<AudioContext | null>(null);
   const audioBus = useRef<AudioBus | null>(null);
+  const audioInitialized = useRef(false);
   const ambientVoice = useRef<AmbientVoice | null>(null);
-  const timers = useRef<number[]>([]);
+  const timers = useRef<Set<number>>(new Set());
   const focusDeadline = useRef<number | null>(null);
   const remainingSecondsRef = useRef(0);
   const flightTimer = useRef<number | null>(null);
+  const focusReturnTarget = useRef<HTMLElement | null>(null);
+  const focusPrimaryControl = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const activeTimers = timers.current;
     return () => {
       activeTimers.forEach(window.clearTimeout);
+      activeTimers.clear();
       if (flightTimer.current) window.clearTimeout(flightTimer.current);
       ambientVoice.current?.stop();
       void audioContext.current?.close();
@@ -581,7 +585,13 @@ export default function Home() {
     if (!focusDuration) return;
 
     document.body.classList.add("focus-session-open");
-    return () => document.body.classList.remove("focus-session-open");
+    const focusFrame = window.requestAnimationFrame(() => {
+      focusPrimaryControl.current?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.classList.remove("focus-session-open");
+    };
   }, [focusDuration]);
 
   useEffect(() => {
@@ -730,13 +740,30 @@ export default function Home() {
       }
 
       setAudioBlocked(false);
-      setSoundOn(true);
+      if (!audioInitialized.current) {
+        audioInitialized.current = true;
+        setSoundOn(true);
+      }
       return context;
     } catch {
       setAudioBlocked(true);
       setSoundOn(false);
       return null;
     }
+  }
+
+  function scheduleTimer(callback: () => void, delay: number) {
+    const timer = window.setTimeout(() => {
+      timers.current.delete(timer);
+      callback();
+    }, delay);
+    timers.current.add(timer);
+    return timer;
+  }
+
+  function clearTransientTimers() {
+    timers.current.forEach(window.clearTimeout);
+    timers.current.clear();
   }
 
   function emitSignal(
@@ -756,14 +783,13 @@ export default function Home() {
       playInteractionSound(context, signalMode, audioBus.current.input, variation);
     }
 
-    const timer = window.setTimeout(() => {
+    scheduleTimer(() => {
       setSignals((current) => current.filter((signal) => signal.id !== id));
     }, 4200);
-    timers.current.push(timer);
   }
 
   async function handleFieldPointer(event: PointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("button")) return;
+    if (focusDuration || (event.target as HTMLElement).closest("button, input")) return;
     if (event.detail > 1) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const context = await ensureAudio();
@@ -777,7 +803,7 @@ export default function Home() {
   }
 
   function handleFieldPointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (focusDuration) return;
+    if (focusDuration || event.pointerType !== "mouse") return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const lookX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
     const lookY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
@@ -812,10 +838,9 @@ export default function Home() {
       playDeepScanSound(context, audioBus.current.input);
     }
 
-    const timer = window.setTimeout(() => {
+    scheduleTimer(() => {
       setDeepScan((current) => current?.id === id ? null : current);
     }, 5200);
-    timers.current.push(timer);
   }
 
   async function handleSoundToggle() {
@@ -826,13 +851,17 @@ export default function Home() {
 
     const context = await ensureAudio();
     if (context && audioBus.current) {
+      setSoundOn(true);
       playInteractionSound(context, mode, audioBus.current.input, signalCount);
     }
   }
 
   async function handleVolumeChange(nextVolume: number) {
     setVolume(nextVolume);
-    if (!soundOn) await ensureAudio(nextVolume);
+    if (!soundOn) {
+      const context = await ensureAudio(nextVolume);
+      if (context) setSoundOn(true);
+    }
   }
 
   async function launchConstellation() {
@@ -843,18 +872,16 @@ export default function Home() {
 
     setIsConstellating(true);
     constellation.forEach(([x, y], index) => {
-      const timer = window.setTimeout(
+      scheduleTimer(
         () => emitSignal(x, y, activeMode, index, context ?? undefined),
         index * (90 + Math.random() * 95),
       );
-      timers.current.push(timer);
     });
 
-    const finishTimer = window.setTimeout(
+    scheduleTimer(
       () => setIsConstellating(false),
       constellation.length * 185 + 700,
     );
-    timers.current.push(finishTimer);
   }
 
   async function nukeSun() {
@@ -865,27 +892,21 @@ export default function Home() {
     setSolarPhase("incoming");
     if (context && output) playSolarSound(context, output, "incoming");
 
-    const detonationTimer = window.setTimeout(() => {
+    scheduleTimer(() => {
       setSolarPhase("detonation");
       if (context && output) playSolarSound(context, output, "detonation");
     }, 1550);
-    const aftermathTimer = window.setTimeout(
+    scheduleTimer(
       () => setSolarPhase("aftermath"),
       3750,
     );
-    const rebirthTimer = window.setTimeout(
+    scheduleTimer(
       () => setSolarPhase("rebirth"),
       5350,
     );
-    const resetTimer = window.setTimeout(
+    scheduleTimer(
       () => setSolarPhase("idle"),
       6900,
-    );
-    timers.current.push(
-      detonationTimer,
-      aftermathTimer,
-      rebirthTimer,
-      resetTimer,
     );
   }
 
@@ -903,14 +924,17 @@ export default function Home() {
     }
 
     setActiveFeature(feature);
-    const featureTimer = window.setTimeout(
+    scheduleTimer(
       () => setActiveFeature(null),
       duration[feature],
     );
-    timers.current.push(featureTimer);
   }
 
   async function startFocusSession(duration: FocusDuration) {
+    focusReturnTarget.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    clearTransientTimers();
     const context = await ensureAudio();
     if (context && audioBus.current) {
       playHyperspaceSound(context, audioBus.current.input);
@@ -923,6 +947,9 @@ export default function Home() {
     setSessionPaused(false);
     setActiveFeature(null);
     setSolarPhase("idle");
+    setSignals([]);
+    setDeepScan(null);
+    setIsConstellating(false);
 
     if (flightTimer.current) window.clearTimeout(flightTimer.current);
     flightTimer.current = window.setTimeout(() => {
@@ -940,6 +967,10 @@ export default function Home() {
     if (flightTimer.current) window.clearTimeout(flightTimer.current);
     flightTimer.current = null;
     focusDeadline.current = null;
+    window.requestAnimationFrame(() => {
+      if (focusReturnTarget.current?.isConnected) focusReturnTarget.current.focus();
+      focusReturnTarget.current = null;
+    });
   }
 
   function toggleSessionPause() {
@@ -972,6 +1003,12 @@ export default function Home() {
   return (
     <main
       className={`shell theme-${mode} ${focusDuration ? `is-focus-session flight-${flightPhase} ${sessionPaused ? "session-paused" : ""}` : ""}`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && focusDuration) {
+          event.preventDefault();
+          endFocusSession();
+        }
+      }}
     >
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Drift, back to top">
@@ -1055,22 +1092,38 @@ export default function Home() {
 
         <div
           className={`signal-field ${isActive ? "is-active" : ""} ${isConstellating ? "is-constellating" : ""} ${visitor ? "has-visitor" : ""} solar-${solarPhase} feature-${activeFeature ?? "idle"}`}
+          data-testid="signal-field"
           onPointerDown={(event) => void handleFieldPointer(event)}
           onPointerMove={handleFieldPointerMove}
           onPointerLeave={resetFieldParallax}
           onDoubleClick={(event) => void handleFieldDoubleClick(event)}
           onKeyDown={(event) => {
             if ((event.target as HTMLElement).closest("button, input")) return;
+            if (focusDuration) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              void ensureAudio().then((context) =>
-                emitSignal(50, 50, mode, signalCount, context ?? undefined),
-              );
+              if (event.shiftKey && event.key === "Enter") {
+                const id = nextId.current++;
+                setDeepScan({ id, x: 50, y: 50, mode });
+                void ensureAudio().then((context) => {
+                  if (context?.state === "running" && audioBus.current) {
+                    playDeepScanSound(context, audioBus.current.input);
+                  }
+                });
+                scheduleTimer(() => {
+                  setDeepScan((current) => current?.id === id ? null : current);
+                }, 5200);
+              } else {
+                void ensureAudio().then((context) =>
+                  emitSignal(50, 50, mode, signalCount, context ?? undefined),
+                );
+              }
             }
           }}
-          role="button"
-          tabIndex={0}
-          aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal. Double-click to run a deep-space scan."
+          role="region"
+          tabIndex={focusDuration ? -1 : 0}
+          aria-describedby="field-instructions"
+          aria-label="Interactive meditation field. Click, tap, or press Enter to place a calming signal. Double-click or press Shift and Enter to run a deep-space scan."
         >
           <div className="field-grid" aria-hidden="true" />
           <div className="observatory-frame" aria-hidden="true">
@@ -1233,7 +1286,7 @@ export default function Home() {
                 <span className="target-reticle"><i /><i /><i /></span>
                 <span className="flight-vector">VECTOR // 7.42</span>
                 {remainingSeconds === 0 && (
-                  <div className="arrival-message">
+                  <div className="arrival-message" role="status" aria-live="polite">
                     <span>Voyage complete</span>
                     <strong>You made some space.</strong>
                     <small>Take one slow breath before returning.</small>
@@ -1368,6 +1421,7 @@ export default function Home() {
           {focusDuration && (
             <div
               className="focus-hud"
+              data-testid="focus-hud"
               onPointerDown={(event) => event.stopPropagation()}
             >
               <div className="focus-hud-brand">
@@ -1375,7 +1429,7 @@ export default function Home() {
                 <span>DRIFT focus</span>
                 <small>{focusDuration} minute voyage</small>
               </div>
-              <div className="focus-clock" aria-live="polite">
+              <div className="focus-clock">
                 <span>
                   {remainingSeconds === 0
                     ? "Orbit complete"
@@ -1414,6 +1468,7 @@ export default function Home() {
               <div className="focus-hud-controls">
                 <button
                   type="button"
+                  ref={focusPrimaryControl}
                   onClick={toggleSessionPause}
                   disabled={remainingSeconds === 0}
                 >
@@ -1485,7 +1540,7 @@ export default function Home() {
                 ? "Unidentified visitor · seems friendly"
                 : "Quiet sector · breathe slowly"}
           </p>
-          <p className="field-hint">
+          <p className="field-hint" id="field-instructions">
             <span aria-hidden="true">↖</span> Tap to settle · double-click to scan
           </p>
 

@@ -1,6 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#12110f",
+  colorScheme: "dark",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const headerList = await headers();
@@ -10,8 +15,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: new URL(origin),
+    applicationName: "DRIFT",
+    creator: "Guhan",
+    category: "productivity",
     title: "DRIFT — Guhan's focus and white noise space",
     description: "A quiet space for meditation, white noise, and 20 or 60 minute focus voyages.",
+    alternates: { canonical: "/" },
+    robots: { index: true, follow: true },
     openGraph: {
       title: "DRIFT",
       description: "A quiet orbit for meditation, white noise, and deep focus.",
@@ -29,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

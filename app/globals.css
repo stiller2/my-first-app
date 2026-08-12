@@ -41,6 +41,12 @@ button {
   font: inherit;
 }
 
+button:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 4px;
+}
+
 .shell {
   --signal: #f05a47;
   --signal-rgb: 240, 90, 71;
@@ -516,6 +522,7 @@ button {
   cursor: crosshair;
   isolation: isolate;
   perspective: 900px;
+  touch-action: manipulation;
 }
 
 .signal-field:focus-visible {
@@ -1032,6 +1039,7 @@ button {
 .is-focus-session .field-hint,
 .is-focus-session .field-controls {
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
@@ -3296,6 +3304,17 @@ button {
   visibility: hidden;
 }
 
+.is-focus-session .space-visitor,
+.is-focus-session .deployed-craft,
+.is-focus-session .meteor-shower,
+.is-focus-session .eclipse-moon,
+.is-focus-session .sun-missile,
+.is-focus-session .solar-explosion,
+.is-focus-session .user-signal,
+.is-focus-session .deep-space-scan {
+  display: none;
+}
+
 .theme-bloom .core {
   width: min(51vw, 580px);
 }
@@ -4347,7 +4366,16 @@ button {
   }
 
   .focus-hud-controls label {
+    grid-template-columns: 54px;
+    padding-inline: 8px;
+  }
+
+  .focus-hud-controls label span {
     display: none;
+  }
+
+  .focus-hud-controls input {
+    width: 54px;
   }
 
   .alien-dashboard {
@@ -4472,6 +4500,10 @@ button {
     left: 18px;
   }
 
+  .field-hint {
+    bottom: 148px;
+  }
+
   .field-controls {
     right: 18px;
     align-items: flex-end;
@@ -4483,6 +4515,12 @@ button {
 
   .mode-picker button {
     min-width: 84px;
+    min-height: 36px;
+  }
+
+  .nuke-button,
+  .feature-button {
+    min-height: 36px;
   }
 
   .statusbar {
